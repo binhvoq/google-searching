@@ -30,6 +30,7 @@ builder.Services.AddScoped<ISearchService, SearchService>();
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
+// Trigger deploy: no logic change
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
