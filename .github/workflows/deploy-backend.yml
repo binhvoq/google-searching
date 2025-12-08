@@ -27,7 +27,7 @@ jobs:
       - name: Deploy to Azure Web App
         uses: azure/webapps-deploy@v2
         with:
-          app-name: api-googlesearching-REPLACE_ME   # thay bằng output api_webapp_name từ Terraform
+          app-name: api-googlesearching-757294ed
           publish-profile: ${{ secrets.AZURE_WEBAPP_PUBLISH_PROFILE }} # export từ Azure Portal
           package: ./publish
 
