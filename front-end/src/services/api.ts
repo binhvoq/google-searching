@@ -3,6 +3,13 @@ import type { SearchRequest, SearchResponse } from '../types';
 
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
+// Debug: Log ra để kiểm tra giá trị thực tế
+console.log('🔍 Debug API URL:', {
+  'import.meta.env.VITE_API_URL': import.meta.env.VITE_API_URL,
+  'API_BASE_URL (final)': API_BASE_URL,
+  'All env vars': import.meta.env
+});
+
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
