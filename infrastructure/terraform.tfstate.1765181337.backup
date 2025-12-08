@@ -1,0 +1,137 @@
+{
+  "version": 4,
+  "terraform_version": "1.12.2",
+  "serial": 6,
+  "lineage": "7d594074-3dce-c89e-9fd2-5a66bc6a1ac3",
+  "outputs": {
+    "frontend_url": {
+      "value": "https://wonderful-glacier-090015800.3.azurestaticapps.net",
+      "type": "string"
+    },
+    "static_webapp_deployment_token": {
+      "value": "427f6640bd58993335a9ccf7cb8291c54646370c733ec17617724d28bf2b9cf503-2756cd05-7935-462d-8f27-1ee7714da7790003012090015800",
+      "type": "string",
+      "sensitive": true
+    }
+  },
+  "resources": [
+    {
+      "mode": "managed",
+      "type": "azurerm_resource_group",
+      "name": "rg",
+      "provider": "provider[\"registry.terraform.io/hashicorp/azurerm\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "id": "/subscriptions/24e68de4-7d65-46a4-9883-0cffd2049694/resourceGroups/rg-google-searching",
+            "location": "southeastasia",
+            "managed_by": "",
+            "name": "rg-google-searching",
+            "tags": null,
+            "timeouts": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjo1NDAwMDAwMDAwMDAwLCJkZWxldGUiOjU0MDAwMDAwMDAwMDAsInJlYWQiOjMwMDAwMDAwMDAwMCwidXBkYXRlIjo1NDAwMDAwMDAwMDAwfX0="
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "azurerm_service_plan",
+      "name": "plan",
+      "provider": "provider[\"registry.terraform.io/hashicorp/azurerm\"]",
+      "instances": [
+        {
+          "schema_version": 1,
+          "attributes": {
+            "app_service_environment_id": "",
+            "id": "/subscriptions/24e68de4-7d65-46a4-9883-0cffd2049694/resourceGroups/rg-google-searching/providers/Microsoft.Web/serverFarms/asp-google-searching",
+            "kind": "linux",
+            "location": "southeastasia",
+            "maximum_elastic_worker_count": 1,
+            "name": "asp-google-searching",
+            "os_type": "Linux",
+            "per_site_scaling_enabled": false,
+            "reserved": true,
+            "resource_group_name": "rg-google-searching",
+            "sku_name": "F1",
+            "tags": null,
+            "timeouts": null,
+            "worker_count": 1,
+            "zone_balancing_enabled": false
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjozNjAwMDAwMDAwMDAwLCJkZWxldGUiOjM2MDAwMDAwMDAwMDAsInJlYWQiOjMwMDAwMDAwMDAwMCwidXBkYXRlIjozNjAwMDAwMDAwMDAwfSwic2NoZW1hX3ZlcnNpb24iOiIxIn0=",
+          "dependencies": [
+            "azurerm_resource_group.rg"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "azurerm_static_site",
+      "name": "web",
+      "provider": "provider[\"registry.terraform.io/hashicorp/azurerm\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "api_key": "427f6640bd58993335a9ccf7cb8291c54646370c733ec17617724d28bf2b9cf503-2756cd05-7935-462d-8f27-1ee7714da7790003012090015800",
+            "app_settings": null,
+            "default_host_name": "wonderful-glacier-090015800.3.azurestaticapps.net",
+            "id": "/subscriptions/24e68de4-7d65-46a4-9883-0cffd2049694/resourceGroups/rg-google-searching/providers/Microsoft.Web/staticSites/web-googlesearching",
+            "identity": [],
+            "location": "eastasia",
+            "name": "web-googlesearching",
+            "resource_group_name": "rg-google-searching",
+            "sku_size": "Free",
+            "sku_tier": "Free",
+            "tags": null,
+            "timeouts": null
+          },
+          "sensitive_attributes": [
+            [
+              {
+                "type": "get_attr",
+                "value": "api_key"
+              }
+            ]
+          ],
+          "identity_schema_version": 0,
+          "private": "eyJlMmJmYjczMC1lY2FhLTExZTYtOGY4OC0zNDM2M2JjN2M0YzAiOnsiY3JlYXRlIjoxODAwMDAwMDAwMDAwLCJkZWxldGUiOjE4MDAwMDAwMDAwMDAsInJlYWQiOjMwMDAwMDAwMDAwMCwidXBkYXRlIjoxODAwMDAwMDAwMDAwfX0=",
+          "dependencies": [
+            "azurerm_resource_group.rg"
+          ]
+        }
+      ]
+    },
+    {
+      "mode": "managed",
+      "type": "random_id",
+      "name": "server",
+      "provider": "provider[\"registry.terraform.io/hashicorp/random\"]",
+      "instances": [
+        {
+          "schema_version": 0,
+          "attributes": {
+            "b64_std": "dXKU7Q==",
+            "b64_url": "dXKU7Q",
+            "byte_length": 4,
+            "dec": "1970443501",
+            "hex": "757294ed",
+            "id": "dXKU7Q",
+            "keepers": null,
+            "prefix": null
+          },
+          "sensitive_attributes": [],
+          "identity_schema_version": 0
+        }
+      ]
+    }
+  ],
+  "check_results": null
+}
