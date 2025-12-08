@@ -3,6 +3,7 @@ import SearchForm from './components/SearchForm';
 import PlaceList from './components/PlaceList';
 import { searchService } from './services/api';
 import type { SearchResponse } from './types';
+// Fix: Rebuild with correct VITE_API_URL from GitHub Secrets
 
 // Trigger deploy: no logic change
 function App() {
