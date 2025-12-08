@@ -1,0 +1,41 @@
+# Terraform
+infrastructure/.terraform/
+infrastructure/.terraform.lock.hcl
+infrastructure/terraform.tfstate
+infrastructure/terraform.tfstate.backup
+infrastructure/*.tfvars
+infrastructure/*.tfvars.json
+
+# Node modules
+node_modules/
+front-end/node_modules/
+
+# Build outputs
+front-end/dist/
+front-end/build/
+back-end/bin/
+back-end/obj/
+back-end/publish/
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
