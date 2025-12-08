@@ -4,6 +4,7 @@ import PlaceList from './components/PlaceList';
 import { searchService } from './services/api';
 import type { SearchResponse } from './types';
 
+// Trigger deploy: no logic change
 function App() {
   const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
