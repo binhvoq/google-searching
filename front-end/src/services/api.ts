@@ -4,13 +4,6 @@ import type { SearchRequest, SearchResponse } from '../types';
 // Dùng VITE_API_URL (nhúng qua .env*.production khi build). Dev fallback localhost.
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
-// Debug: Log ra để kiểm tra giá trị thực tế trên browser
-console.log('🔍 Debug API URL:', {
-  'MODE': import.meta.env.MODE,
-  'import.meta.env.VITE_API_URL': import.meta.env.VITE_API_URL,
-  'API_BASE_URL (final)': API_BASE_URL,
-});
-
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
   headers: {
