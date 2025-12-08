@@ -25,11 +25,25 @@ jobs:
         working-directory: front-end
         run: npm ci
 
+      - name: Debug - Check if VITE_API_URL secret exists
+        run: |
+          if [ -z "${{ secrets.VITE_API_URL }}" ]; then
+            echo "❌ ERROR: VITE_API_URL secret is NOT set or empty!"
+            exit 1
+          else
+            echo "✅ VITE_API_URL secret is set (length: ${#VITE_API_URL} chars)"
+            echo "First 20 chars: ${VITE_API_URL:0:20}..."
+          fi
+        env:
+          VITE_API_URL: ${{ secrets.VITE_API_URL }}
+
       - name: Build
         working-directory: front-end
         env:
           VITE_API_URL: ${{ secrets.VITE_API_URL }} # ví dụ: https://<api>.azurewebsites.net
-        run: npm run build
+        run: |
+          echo "Building with VITE_API_URL=${VITE_API_URL:0:30}..."
+          npm run build
 
       - name: Deploy to Azure Static Web App
         uses: Azure/static-web-apps-deploy@v1
