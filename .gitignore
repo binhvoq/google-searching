@@ -5,6 +5,7 @@ infrastructure/terraform.tfstate
 infrastructure/terraform.tfstate.backup
 infrastructure/*.tfvars
 infrastructure/*.tfvars.json
+infrastructure/LOCAL_SECRETS.txt
 
 # Node modules
 node_modules/

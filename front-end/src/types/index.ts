@@ -28,3 +28,22 @@ export interface SearchResponse {
   centerLocation: LocationResponse | null;
 }
 
+export interface ChatRequest {
+  sessionId?: string;
+  message: string;
+  autoRunApi: boolean;
+}
+
+export interface ChatToolCall {
+  name: string;
+  status: 'queued' | 'running' | 'done' | 'error' | string;
+  detail?: string;
+}
+
+export interface ChatResponse {
+  sessionId: string;
+  assistantMessage: string;
+  memorySummary: string;
+  toolCalls: ChatToolCall[];
+}
+

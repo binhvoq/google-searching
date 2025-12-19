@@ -1,0 +1,10 @@
+google_maps_api_key = "YOUR_GOOGLE_MAPS_API_KEY"
+
+# Azure OpenAI (Azure AI Foundry)
+# openai_location       = "East US"
+# openai_sku_name       = "S0"
+# openai_deployment_name = "gpt4omini"
+# openai_model_name     = "gpt-4o-mini"
+# openai_model_version  = "2024-07-18"
+# openai_api_version    = "2024-08-01-preview"
+

@@ -13,8 +13,8 @@ builder.Services.AddCors(options =>
     options.AddPolicy("AllowAll", policy =>
     {
         policy.AllowAnyOrigin()
-              .AllowAnyMethod()
-              .AllowAnyHeader();
+            .AllowAnyMethod()
+            .AllowAnyHeader();
     });
 });
 
@@ -24,13 +24,20 @@ builder.Services.AddHttpClient<IGoogleMapsService, GoogleMapsService>(client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
+// Azure OpenAI client
+builder.Services.AddHttpClient<AzureOpenAIChatClient>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(60);
+});
+
 // Đăng ký các services
 builder.Services.AddScoped<ISearchService, SearchService>();
+builder.Services.AddSingleton<ChatSessionStore>();
+builder.Services.AddScoped<IChatService, ChatService>();
 
 var app = builder.Build();
 
 // Configure the HTTP request pipeline.
-// Trigger deploy: no logic change
 if (app.Environment.IsDevelopment())
 {
     app.UseSwagger();
