@@ -1,94 +1,38 @@
-# Google Searching - Frontend
+# GoogleSearching (Front-end)
 
-Ứng dụng React để tìm kiếm địa điểm theo vùng và từ khóa tại Việt Nam, sử dụng Google Maps API.
-
-## Tính năng
-
-- 🔍 Tìm kiếm địa điểm theo vùng (quận, huyện, thành phố)
-- 🏷️ Tìm kiếm với từ khóa (khách sạn, cafe, bệnh viện...)
-- 📍 Hiển thị thông tin chi tiết: tên, đánh giá, địa chỉ, loại địa điểm
-- 🗺️ Liên kết đến Google Maps để xem vị trí
-- 🎨 UI hiện đại, responsive với Tailwind CSS
+Ứng dụng React + Vite + Tailwind để:
+- Tìm kiếm địa điểm theo vùng/từ khoá
+- Chat với A.I (Azure OpenAI gpt-4o-mini) và tự động gọi API tìm kiếm
 
 ## Yêu cầu
 
-- Node.js 18+ 
-- npm hoặc yarn
-- Backend API đang chạy tại `http://localhost:5000`
-
-## Cài đặt
-
-```bash
-# Cài đặt dependencies
-npm install
-
-# Hoặc sử dụng yarn
-yarn install
-```
-
-## Chạy ứng dụng
-
-```bash
-# Chạy development server
-npm run dev
-
-# Hoặc
-yarn dev
-```
-
-Ứng dụng sẽ chạy tại `http://localhost:3000`
-
-## Build cho production
-
-```bash
-npm run build
-```
-
-## Cấu trúc dự án
-
-```
-front-end/
-├── src/
-│   ├── components/      # React components
-│   │   ├── SearchForm.tsx
-│   │   ├── PlaceCard.tsx
-│   │   └── PlaceList.tsx
-│   ├── services/        # API services
-│   │   └── api.ts
-│   ├── types/           # TypeScript types
-│   │   └── index.ts
-│   ├── App.tsx          # Main App component
-│   ├── main.tsx         # Entry point
-│   └── index.css        # Global styles
-├── public/              # Static files
-├── index.html
-├── package.json
-├── tsconfig.json
-├── vite.config.ts
-└── tailwind.config.js
-```
-
-## API Endpoints
-
-Ứng dụng sử dụng các endpoint sau từ backend:
-
-- `POST /api/Search` - Tìm kiếm địa điểm
-- `GET /api/Search?area={area}&keyword={keyword}` - Tìm kiếm địa điểm (GET method)
+- Node.js 18+
+- Backend đang chạy (mặc định `http://localhost:5000` hoặc `https://localhost:5001`)
 
 ## Cấu hình
 
-Có thể cấu hình API URL thông qua biến môi trường:
-
-Tạo file `.env`:
-```
+Tạo `front-end/.env`:
+```bash
 VITE_API_URL=http://localhost:5000
 ```
 
-## Công nghệ sử dụng
+## Chạy
 
-- **React 18** - UI framework
-- **TypeScript** - Type safety
-- **Vite** - Build tool
-- **Tailwind CSS** - Styling
-- **Axios** - HTTP client
+```bash
+cd front-end
+npm install
+npm run dev
+```
+
+## Build
+
+```bash
+cd front-end
+npm run build
+```
+
+## API sử dụng
+
+- `POST /api/Search`
+- `POST /api/Chat`
 

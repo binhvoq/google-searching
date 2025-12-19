@@ -1,6 +1,6 @@
-using Microsoft.AspNetCore.Mvc;
 using GoogleSearching.Api.Models;
 using GoogleSearching.Api.Services;
+using Microsoft.AspNetCore.Mvc;
 
 namespace GoogleSearching.Api.Controllers;
 
@@ -11,19 +11,16 @@ public class SearchController : ControllerBase
     private readonly ISearchService _searchService;
     private readonly ILogger<SearchController> _logger;
 
-    public SearchController(
-        ISearchService searchService,
-        ILogger<SearchController> logger)
+    public SearchController(ISearchService searchService, ILogger<SearchController> logger)
     {
         _searchService = searchService;
         _logger = logger;
     }
 
     /// <summary>
-    /// Tìm kiếm địa điểm theo vùng và từ khóa
+    /// Tìm kiếm địa điểm theo vùng và từ khoá
     /// </summary>
-    /// <param name="request">Request chứa vùng (Area) và từ khóa (Keyword) tùy chọn</param>
-    /// <returns>Danh sách địa điểm tìm được</returns>
+    /// <param name="request">Request chứa vùng (Area) và từ khoá (Keyword) tuỳ chọn</param>
     [HttpPost]
     public async Task<ActionResult<SearchResponse>> SearchPlaces([FromBody] SearchRequest request)
     {
@@ -45,15 +42,12 @@ public class SearchController : ControllerBase
     }
 
     /// <summary>
-    /// Tìm kiếm địa điểm theo vùng và từ khóa (GET method)
+    /// Tìm kiếm địa điểm theo vùng và từ khoá (GET method)
     /// </summary>
     /// <param name="area">Vùng tìm kiếm (ví dụ: "Đà Lạt", "Quận 8, HCM")</param>
-    /// <param name="keyword">Từ khóa tìm kiếm (ví dụ: "khách sạn", "cafe làm việc")</param>
-    /// <returns>Danh sách địa điểm tìm được</returns>
+    /// <param name="keyword">Từ khoá tìm kiếm (ví dụ: "khách sạn", "cafe làm việc")</param>
     [HttpGet]
-    public async Task<ActionResult<SearchResponse>> SearchPlacesGet(
-        [FromQuery] string area,
-        [FromQuery] string? keyword = null)
+    public async Task<ActionResult<SearchResponse>> SearchPlacesGet([FromQuery] string area, [FromQuery] string? keyword = null)
     {
         if (string.IsNullOrWhiteSpace(area))
         {
