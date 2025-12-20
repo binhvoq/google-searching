@@ -31,7 +31,6 @@ public class GoogleMapsService : IGoogleMapsService
 
         try
         {
-            _logger.LogInformation("Google geocode. area={Area} baseUrl={BaseUrl}", area, GeocodingUrl);
             var response = await _httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
 
@@ -100,13 +99,6 @@ public class GoogleMapsService : IGoogleMapsService
 
             try
             {
-                _logger.LogInformation(
-                    "Google places. area={Area} keyword={Keyword} page={Page} hasPageToken={HasToken} baseUrl={BaseUrl}",
-                    area,
-                    string.IsNullOrWhiteSpace(keyword) ? "" : keyword,
-                    pageNum,
-                    nextPageToken != null,
-                    PlacesUrl);
                 var response = await _httpClient.GetAsync(url);
                 response.EnsureSuccessStatusCode();
 
@@ -139,8 +131,6 @@ public class GoogleMapsService : IGoogleMapsService
                     }
                 }
 
-                _logger.LogInformation("Google places page done. area={Area} page={Page} pageResults={PageResults} totalKept={TotalKept} hasNext={HasNext}",
-                    area, pageNum, data.Results.Count, allResults.Count, !string.IsNullOrEmpty(data.NextPageToken));
                 nextPageToken = data.NextPageToken;
                 if (string.IsNullOrEmpty(nextPageToken))
                 {
