@@ -1,10 +1,11 @@
 google_maps_api_key = "YOUR_GOOGLE_MAPS_API_KEY"
 
-# Azure OpenAI (Azure AI Foundry)
-# openai_location       = "East US"
-# openai_sku_name       = "S0"
-# openai_deployment_name = "gpt4omini"
-# openai_model_name     = "gpt-4o-mini"
-# openai_model_version  = "2024-07-18"
-# openai_api_version    = "2024-08-01-preview"
+# Azure AI Foundry configuration
+# ai_foundry_location   = "eastus"
+# ai_foundry_name       = ""  # Để trống sẽ tự động tạo tên unique
+# model_name            = "gpt-4o-mini"
+# model_version         = "2025-04-14"
+# deployment_sku        = "GlobalStandard"
+# deployment_capacity   = 1
+# openai_api_version    = "2024-02-15-preview"
 

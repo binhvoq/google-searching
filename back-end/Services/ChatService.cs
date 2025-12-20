@@ -5,13 +5,13 @@ namespace GoogleSearching.Api.Services;
 
 public class ChatService : IChatService
 {
-    private readonly AzureOpenAIChatClient _openAi;
+    private readonly OpenAIService _openAi;
     private readonly ISearchService _searchService;
     private readonly ChatSessionStore _sessions;
     private readonly ILogger<ChatService> _logger;
 
     public ChatService(
-        AzureOpenAIChatClient openAi,
+        OpenAIService openAi,
         ISearchService searchService,
         ChatSessionStore sessions,
         ILogger<ChatService> logger)
@@ -75,12 +75,23 @@ public class ChatService : IChatService
         {
             firstPayload["tools"] = tools;
             firstPayload["tool_choice"] = "auto";
+            var toolsCount = tools switch
+            {
+                Array a => a.Length,
+                System.Collections.ICollection c => c.Count,
+                _ => 0
+            };
+            _logger.LogInformation("Sending request with tools. sessionId={SessionId} toolsCount={Count}",
+                session.SessionId, toolsCount);
         }
 
         AzureChatCompletion first;
         try
         {
             first = await CreateWithRetryOnceOn429Async(firstPayload, session.SessionId, cancellationToken);
+            var contentPreview = first.AssistantContent?.Substring(0, Math.Min(100, first.AssistantContent.Length)) ?? "";
+            _logger.LogInformation("OpenAI response received. sessionId={SessionId} hasToolCalls={HasToolCalls} toolCallsCount={Count} content={Content}", 
+                session.SessionId, first.ToolCalls.Count > 0, first.ToolCalls.Count, contentPreview);
         }
         catch (Exception ex)
         {
@@ -133,21 +144,28 @@ public class ChatService : IChatService
         }
 
         // Add assistant tool call message
+        // QUAN TRỌNG: Theo Azure OpenAI docs, assistant message với tool_calls PHẢI đi trước tool messages
+        // Format: role="assistant", content=null (khi có tool_calls), tool_calls=[{id, type, function}]
+        var assistantToolCalls = first.ToolCalls.Select(tc => new Dictionary<string, object?>
+        {
+            ["id"] = tc.Id,  // ID này sẽ được dùng trong tool_call_id của tool message sau
+            ["type"] = "function",
+            ["function"] = new Dictionary<string, object?>
+            {
+                ["name"] = tc.Name,
+                ["arguments"] = tc.ArgumentsJson,
+            }
+        }).ToList();
+        
         messages.Add(new Dictionary<string, object?>
         {
             ["role"] = "assistant",
-            ["content"] = null,
-            ["tool_calls"] = first.ToolCalls.Select(tc => new Dictionary<string, object?>
-            {
-                ["id"] = tc.Id,
-                ["type"] = "function",
-                ["function"] = new Dictionary<string, object?>
-                {
-                    ["name"] = tc.Name,
-                    ["arguments"] = tc.ArgumentsJson,
-                }
-            }).ToList()
+            ["content"] = null,  // null khi có tool_calls
+            ["tool_calls"] = assistantToolCalls
         });
+        
+        _logger.LogInformation("Added assistant message with {Count} tool_calls. sessionId={SessionId}", 
+            assistantToolCalls.Count, session.SessionId);
 
         foreach (var call in first.ToolCalls)
         {
@@ -191,13 +209,15 @@ public class ChatService : IChatService
                 });
 
                 var toolContentJson = JsonSerializer.Serialize(summary);
-                _logger.LogInformation("Tool result summary size={Size} chars. sessionId={SessionId}",
-                    toolContentJson.Length, session.SessionId);
+                _logger.LogInformation("Tool result summary size={Size} chars. sessionId={SessionId} toolCallId={ToolCallId}",
+                    toolContentJson.Length, session.SessionId, call.Id);
 
+                // Theo Azure OpenAI docs: tool message phải có tool_call_id khớp với id trong assistant tool_calls
+                // Format: role="tool", tool_call_id=<id từ tool_calls>, content=<kết quả JSON>
                 messages.Add(new Dictionary<string, object?>
                 {
                     ["role"] = "tool",
-                    ["tool_call_id"] = call.Id,
+                    ["tool_call_id"] = call.Id,  // Phải khớp 100% với id trong tool_calls của assistant message trước đó
                     ["content"] = toolContentJson,
                 });
             }

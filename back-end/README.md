@@ -2,23 +2,23 @@
 
 Web API .NET 8 để:
 - Tìm kiếm địa điểm theo vùng/từ khoá (Google Maps API)
-- Chat với A.I bằng Azure OpenAI (gpt-4o-mini) và tự động gọi tool `search_places`
+- Chat với A.I bằng Azure AI Foundry (gpt-4o-mini) và tự động gọi tool `search_places`
 
 ## Yêu cầu
 
 - .NET 8 SDK
 - Google Maps API Key
-- Azure OpenAI (Azure AI Foundry) endpoint + key + deployment name
+- Azure AI Foundry endpoint + key + deployment name
 
 ## Cấu hình
 
 Ưu tiên cấu hình bằng biến môi trường (khuyến nghị cho production):
 
 - `GoogleMapsApi__ApiKey`
-- `AzureOpenAI__Endpoint` (vd: `https://<resource>.openai.azure.com/`)
+- `AzureOpenAI__Endpoint` (vd: `https://<resource>.cognitiveservices.azure.com/`)
 - `AzureOpenAI__ApiKey`
-- `AzureOpenAI__DeploymentName` (vd: `gpt4omini`)
-- `AzureOpenAI__ApiVersion` (vd: `2024-08-01-preview`)
+- `AzureOpenAI__DeploymentName` (vd: `gpt-4o-mini`)
+- `AzureOpenAI__ApiVersion` (vd: `2024-02-15-preview`)
 
 Bạn cũng có thể cấu hình trong `back-end/appsettings.json` (không nên commit secrets).
 

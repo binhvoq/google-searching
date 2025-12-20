@@ -24,11 +24,8 @@ builder.Services.AddHttpClient<IGoogleMapsService, GoogleMapsService>(client =>
     client.Timeout = TimeSpan.FromSeconds(30);
 });
 
-// Azure OpenAI client
-builder.Services.AddHttpClient<AzureOpenAIChatClient>(client =>
-{
-    client.Timeout = TimeSpan.FromSeconds(60);
-});
+// Azure OpenAI service (sử dụng Azure AI Foundry)
+builder.Services.AddScoped<OpenAIService>();
 
 // Đăng ký các services
 builder.Services.AddScoped<ISearchService, SearchService>();
