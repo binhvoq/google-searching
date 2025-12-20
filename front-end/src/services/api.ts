@@ -2,7 +2,7 @@ import axios from 'axios';
 import type { ChatRequest, ChatResponse, SearchRequest, SearchResponse } from '../types';
 
 // Dùng VITE_API_URL (nhúng qua .env*.production khi build). Dev fallback localhost.
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
+export const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 
 const apiClient = axios.create({
   baseURL: API_BASE_URL,
@@ -31,4 +31,3 @@ export const chatService = {
     return response.data;
   },
 };
-

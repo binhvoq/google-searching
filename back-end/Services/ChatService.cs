@@ -30,6 +30,8 @@ public class ChatService : IChatService
         }
 
         var session = _sessions.GetOrCreate(request.SessionId);
+        _logger.LogInformation("Chat request. sessionId={SessionId} autoRunApi={AutoRunApi} messageLen={Len}",
+            session.SessionId, request.AutoRunApi, request.Message.Trim().Length);
 
         var systemPrompt = ChatPrompts.BuildSystemPrompt(request.AutoRunApi);
         var memory = session.MemorySummary;
@@ -66,7 +68,7 @@ public class ChatService : IChatService
         {
             ["messages"] = messages,
             ["temperature"] = 0.2,
-            ["max_tokens"] = 800,
+            ["max_tokens"] = 650,
         };
 
         if (request.AutoRunApi)
@@ -75,9 +77,19 @@ public class ChatService : IChatService
             firstPayload["tool_choice"] = "auto";
         }
 
-        var first = await _openAi.CreateChatCompletionAsync(firstPayload, cancellationToken);
+        AzureChatCompletion first;
+        try
+        {
+            first = await _openAi.CreateChatCompletionAsync(firstPayload, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Azure OpenAI first completion failed. sessionId={SessionId}", session.SessionId);
+            throw;
+        }
 
         var toolCalls = new List<ChatToolCall>();
+        var latestSearchSummary = (SearchToolResult?)null;
 
         // No tool calls -> return assistant message as-is
         if (first.ToolCalls.Count == 0 || !request.AutoRunApi)
@@ -136,6 +148,9 @@ public class ChatService : IChatService
                 session.LastArea = area;
                 session.LastKeyword = keyword;
 
+                _logger.LogInformation("Tool call search_places. sessionId={SessionId} area={Area} keyword={Keyword}",
+                    session.SessionId, area, keyword ?? "");
+
                 toolCalls.Add(new ChatToolCall
                 {
                     Name = "search_places",
@@ -145,6 +160,7 @@ public class ChatService : IChatService
 
                 var result = await _searchService.SearchPlacesAsync(new SearchRequest { Area = area, Keyword = keyword });
                 var summary = SummarizeSearchResult(result);
+                latestSearchSummary = summary;
 
                 toolCalls.Add(new ChatToolCall
                 {
@@ -153,11 +169,15 @@ public class ChatService : IChatService
                     Detail = $"{summary.TotalCount} results"
                 });
 
+                var toolContentJson = JsonSerializer.Serialize(summary);
+                _logger.LogInformation("Tool result summary size={Size} chars. sessionId={SessionId}",
+                    toolContentJson.Length, session.SessionId);
+
                 messages.Add(new Dictionary<string, object?>
                 {
                     ["role"] = "tool",
                     ["tool_call_id"] = call.Id,
-                    ["content"] = JsonSerializer.Serialize(summary),
+                    ["content"] = toolContentJson,
                 });
             }
             catch (Exception ex)
@@ -177,14 +197,26 @@ public class ChatService : IChatService
         {
             ["messages"] = messages,
             ["temperature"] = 0.2,
-            ["max_tokens"] = 900,
+            ["max_tokens"] = 700,
         };
 
-        var second = await _openAi.CreateChatCompletionAsync(secondPayload, cancellationToken);
-        var assistantFinal = second.AssistantContent?.Trim();
+        string assistantFinal;
+        try
+        {
+            var second = await _openAi.CreateChatCompletionAsync(secondPayload, cancellationToken);
+            assistantFinal = second.AssistantContent?.Trim() ?? string.Empty;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Azure OpenAI second completion failed. sessionId={SessionId}", session.SessionId);
+            assistantFinal = string.Empty;
+        }
+
         if (string.IsNullOrWhiteSpace(assistantFinal))
         {
-            assistantFinal = "Mình đã gọi API nhưng chưa nhận được phản hồi hoàn chỉnh. Bạn thử lại giúp mình nhé.";
+            assistantFinal = latestSearchSummary != null
+                ? BuildFallbackAnswerFromSearch(latestSearchSummary)
+                : "Mình đã gọi API nhưng chưa nhận được phản hồi hoàn chỉnh. Bạn thử lại giúp mình nhé.";
         }
 
         AppendToHistory(session, request.Message, assistantFinal);
@@ -263,13 +295,13 @@ public class ChatService : IChatService
     private static SearchToolResult SummarizeSearchResult(SearchResponse result)
     {
         var places = result.Places
-            .Take(10)
+            .Take(5)
             .Select(p => new SearchToolPlace
             {
                 Name = p.Name,
                 Rating = p.Rating,
                 UserRatingsTotal = p.UserRatingsTotal,
-                Address = p.Address,
+                Address = Truncate(p.Address, 140),
                 GoogleMapsUrl = string.IsNullOrWhiteSpace(p.PlaceId) ? null : $"https://www.google.com/maps/place/?q=place_id:{p.PlaceId}"
             })
             .ToList();
@@ -281,6 +313,38 @@ public class ChatService : IChatService
             TotalCount = result.TotalCount,
             Places = places
         };
+    }
+
+    private static string Truncate(string value, int maxLen)
+    {
+        if (string.IsNullOrEmpty(value)) return value;
+        return value.Length <= maxLen ? value : $"{value[..maxLen]}…";
+    }
+
+    private static string BuildFallbackAnswerFromSearch(SearchToolResult summary)
+    {
+        if (summary.TotalCount == 0)
+        {
+            return $"Mình không tìm thấy địa điểm nào cho khu vực “{summary.Area}”. Bạn muốn thử khu vực khác không?";
+        }
+
+        var lines = new List<string>
+        {
+            $"Mình đã tìm thấy {summary.TotalCount} địa điểm tại “{summary.Area}”{(string.IsNullOrWhiteSpace(summary.Keyword) ? "" : $" cho từ khoá “{summary.Keyword}”")}.",
+            "",
+            "Top gợi ý:",
+        };
+
+        foreach (var p in summary.Places)
+        {
+            var rating = p.Rating.HasValue ? $"{p.Rating:0.0}⭐" : "chưa có rating";
+            lines.Add($"- {p.Name} ({rating}, {p.UserRatingsTotal} đánh giá) — {p.Address}");
+        }
+
+        lines.Add("");
+        lines.Add("Nếu bạn muốn, mình có thể lọc theo “đánh giá > 4.2”, “mở cửa”, hoặc “gần trung tâm”.");
+
+        return string.Join('\n', lines);
     }
 }
 
@@ -300,4 +364,3 @@ public class SearchToolPlace
     public string Address { get; set; } = string.Empty;
     public string? GoogleMapsUrl { get; set; }
 }
-

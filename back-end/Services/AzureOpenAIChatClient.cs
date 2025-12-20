@@ -52,8 +52,9 @@ public class AzureOpenAIChatClient
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
-            _logger.LogWarning("Azure OpenAI error {Status}: {Body}", (int)response.StatusCode, json);
-            throw new InvalidOperationException($"Azure OpenAI request failed: {(int)response.StatusCode}");
+            var bodyPreview = json.Length <= 3000 ? json : $"{json[..3000]}…(truncated)";
+            _logger.LogWarning("Azure OpenAI error {Status}: {Body}", (int)response.StatusCode, bodyPreview);
+            throw new InvalidOperationException($"Azure OpenAI request failed: {(int)response.StatusCode}. Body: {bodyPreview}");
         }
 
         return AzureChatCompletion.Parse(json);
@@ -103,4 +104,3 @@ public class AzureToolCall
     public string Name { get; set; } = string.Empty;
     public string ArgumentsJson { get; set; } = "{}";
 }
-
