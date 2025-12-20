@@ -30,7 +30,6 @@ public class ChatService : IChatService
         }
 
         var session = _sessions.GetOrCreate(request.SessionId);
-        var traceId = System.Diagnostics.Activity.Current?.Id;
         _logger.LogInformation("Chat request. sessionId={SessionId} autoRunApi={AutoRunApi} messageLen={Len}",
             session.SessionId, request.AutoRunApi, request.Message.Trim().Length);
 
@@ -63,19 +62,6 @@ public class ChatService : IChatService
             ["content"] = request.Message.Trim()
         });
 
-        LogPromptStats(
-            stage: "prepare",
-            sessionId: session.SessionId,
-            traceId: traceId,
-            autoRunApi: request.AutoRunApi,
-            systemPromptLen: systemPrompt.Length,
-            memoryLen: memory.Length,
-            totalStoredHistory: session.History.Count,
-            includedHistory: history.Count,
-            messagesCount: messages.Count,
-            approxInputTokens: EstimateTokensFromChars(SumMessageChars(messages)),
-            userPreview: BuildPreview(request.Message));
-
         var tools = BuildTools();
 
         var firstPayload = new Dictionary<string, object?>
@@ -94,14 +80,14 @@ public class ChatService : IChatService
         AzureChatCompletion first;
         try
         {
-            _logger.LogInformation("Azure OpenAI call=start stage=first sessionId={SessionId} traceId={TraceId} tools={Tools}",
-                session.SessionId, traceId ?? "", request.AutoRunApi);
-            first = await _openAi.CreateChatCompletionAsync(firstPayload, cancellationToken);
+            first = await CreateWithRetryOnceOn429Async(firstPayload, session.SessionId, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Azure OpenAI first completion failed. sessionId={SessionId}", session.SessionId);
-            var assistantText = BuildLocalFallbackReply(request.Message);
+            var assistantText = ex is AzureOpenAIRequestException { StatusCode: 429 } rateLimitEx
+                ? BuildUserFacingRateLimitMessage(rateLimitEx)
+                : BuildLocalFallbackReply(request.Message, ex);
             AppendToHistory(session, request.Message, assistantText);
 
             return new ChatResponse
@@ -126,9 +112,6 @@ public class ChatService : IChatService
         var toolCalls = new List<ChatToolCall>();
         var latestSearchSummary = (SearchToolResult?)null;
 
-        _logger.LogInformation("Azure OpenAI call=done stage=first sessionId={SessionId} traceId={TraceId} assistantLen={AssistantLen} toolCalls={ToolCalls}",
-            session.SessionId, traceId ?? "", first.AssistantContent?.Length ?? 0, first.ToolCalls.Count);
-
         // No tool calls -> return assistant message as-is
         if (first.ToolCalls.Count == 0 || !request.AutoRunApi)
         {
@@ -148,9 +131,6 @@ public class ChatService : IChatService
                 ToolCalls = toolCalls
             };
         }
-
-        _logger.LogInformation("Tool flow: will execute {Count} tool call(s). sessionId={SessionId} traceId={TraceId} tools={Tools}",
-            first.ToolCalls.Count, session.SessionId, traceId ?? "", string.Join(',', first.ToolCalls.Select(t => t.Name)));
 
         // Add assistant tool call message
         messages.Add(new Dictionary<string, object?>
@@ -244,20 +224,7 @@ public class ChatService : IChatService
         string assistantFinal;
         try
         {
-            LogPromptStats(
-                stage: "second_call",
-                sessionId: session.SessionId,
-                traceId: traceId,
-                autoRunApi: request.AutoRunApi,
-                systemPromptLen: systemPrompt.Length,
-                memoryLen: memory.Length,
-                totalStoredHistory: session.History.Count,
-                includedHistory: history.Count,
-                messagesCount: messages.Count,
-                approxInputTokens: EstimateTokensFromChars(SumMessageChars(messages)),
-                userPreview: BuildPreview(request.Message));
-            _logger.LogInformation("Azure OpenAI call=start stage=second sessionId={SessionId} traceId={TraceId}", session.SessionId, traceId ?? "");
-            var second = await _openAi.CreateChatCompletionAsync(secondPayload, cancellationToken);
+            var second = await CreateWithRetryOnceOn429Async(secondPayload, session.SessionId, cancellationToken);
             assistantFinal = second.AssistantContent?.Trim() ?? string.Empty;
         }
         catch (Exception ex)
@@ -268,8 +235,7 @@ public class ChatService : IChatService
 
         if (string.IsNullOrWhiteSpace(assistantFinal))
         {
-            _logger.LogWarning("Assistant final empty -> using fallback. sessionId={SessionId} traceId={TraceId} hasSearchSummary={HasSearchSummary}",
-                session.SessionId, traceId ?? "", latestSearchSummary != null);
+            // assistantFinal empty -> fallback
             assistantFinal = latestSearchSummary != null
                 ? BuildFallbackAnswerFromSearch(latestSearchSummary)
                 : "Mình đã gọi API nhưng chưa nhận được phản hồi hoàn chỉnh. Bạn thử lại giúp mình nhé.";
@@ -298,7 +264,7 @@ public class ChatService : IChatService
         }
     }
 
-    private static string BuildLocalFallbackReply(string userMessage)
+    private static string BuildLocalFallbackReply(string userMessage, Exception? ex)
     {
         var text = (userMessage ?? string.Empty).Trim();
 
@@ -316,6 +282,14 @@ public class ChatService : IChatService
         return retryAfter.HasValue && retryAfter.Value > 0
             ? $"Rate limited. retryAfterSec={retryAfter.Value}"
             : "Rate limited.";
+    }
+
+    private static string BuildUserFacingRateLimitMessage(AzureOpenAIRequestException ex)
+    {
+        var retryAfter = ex.RetryAfterSeconds;
+        return retryAfter.HasValue && retryAfter.Value > 0
+            ? $"Hệ thống đang bận (rate limit). Bạn thử lại sau {retryAfter.Value} giây nhé."
+            : "Hệ thống đang bận (rate limit). Bạn thử lại sau ít giây nhé.";
     }
 
     private static bool LooksLikeGreetingOrSmalltalk(string text)
@@ -344,63 +318,22 @@ public class ChatService : IChatService
         return smalltalkMarkers.Any(m => t.Contains(m, StringComparison.Ordinal));
     }
 
-    private void LogPromptStats(
-        string stage,
-        string sessionId,
-        string? traceId,
-        bool autoRunApi,
-        int systemPromptLen,
-        int memoryLen,
-        int totalStoredHistory,
-        int includedHistory,
-        int messagesCount,
-        int approxInputTokens,
-        string userPreview)
+    private async Task<AzureChatCompletion> CreateWithRetryOnceOn429Async(object payload, string sessionId, CancellationToken cancellationToken)
     {
-        _logger.LogInformation(
-            "Prompt stats. stage={Stage} sessionId={SessionId} traceId={TraceId} autoRunApi={AutoRunApi} systemLen={SystemLen} memoryLen={MemoryLen} storedHistory={StoredHistory} includedHistory={IncludedHistory} messages={Messages} approxInputTokens={ApproxTokens} userPreview=\"{UserPreview}\"",
-            stage, sessionId, traceId ?? "", autoRunApi, systemPromptLen, memoryLen, totalStoredHistory, includedHistory, messagesCount, approxInputTokens, userPreview);
-    }
-
-    private static int SumMessageChars(IEnumerable<Dictionary<string, object?>> messages)
-    {
-        var total = 0;
-        foreach (var msg in messages)
+        try
         {
-            if (msg.TryGetValue("content", out var contentObj) && contentObj is string content && !string.IsNullOrEmpty(content))
-            {
-                total += content.Length;
-            }
-
-            // Tool call message includes arguments which can be large.
-            if (msg.TryGetValue("tool_calls", out var toolCallsObj) && toolCallsObj is IEnumerable<object> toolCalls)
-            {
-                foreach (var tc in toolCalls)
-                {
-                    if (tc is Dictionary<string, object?> tcDict &&
-                        tcDict.TryGetValue("function", out var fnObj) && fnObj is Dictionary<string, object?> fnDict &&
-                        fnDict.TryGetValue("arguments", out var argsObj) && argsObj is string args && !string.IsNullOrEmpty(args))
-                    {
-                        total += args.Length;
-                    }
-                }
-            }
+            return await _openAi.CreateChatCompletionAsync(payload, cancellationToken);
         }
-
-        return total;
-    }
-
-    private static int EstimateTokensFromChars(int charCount)
-    {
-        if (charCount <= 0) return 0;
-        // Rough estimate: GPT token ~= 3-4 chars for Vietnamese/Latin text.
-        return (int)Math.Ceiling(charCount / 3.6);
-    }
-
-    private static string BuildPreview(string text)
-    {
-        var t = (text ?? string.Empty).Replace('\n', ' ').Replace('\r', ' ').Trim();
-        return t.Length <= 90 ? t : $"{t[..90]}...";
+        catch (AzureOpenAIRequestException ex) when (ex.StatusCode == 429 &&
+                                                    ex.RetryAfterSeconds.HasValue &&
+                                                    ex.RetryAfterSeconds.Value > 0 &&
+                                                    ex.RetryAfterSeconds.Value <= 15)
+        {
+            _logger.LogWarning("Azure OpenAI rate limited. sessionId={SessionId} retryAfterSec={RetryAfterSec} -> waiting then retry once",
+                sessionId, ex.RetryAfterSeconds.Value);
+            await Task.Delay(TimeSpan.FromSeconds(ex.RetryAfterSeconds.Value), cancellationToken);
+            return await _openAi.CreateChatCompletionAsync(payload, cancellationToken);
+        }
     }
 
     private static object BuildTools()
