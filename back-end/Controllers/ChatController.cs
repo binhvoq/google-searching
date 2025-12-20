@@ -35,9 +35,9 @@ public class ChatController : ControllerBase
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Chat error");
-            return StatusCode(500, new { error = "Đã xảy ra lỗi khi chat với A.I" });
+            var traceId = HttpContext.TraceIdentifier;
+            _logger.LogError(ex, "Chat error. traceId={TraceId}", traceId);
+            return StatusCode(500, new { error = "Đã xảy ra lỗi khi chat với A.I", traceId });
         }
     }
 }
-

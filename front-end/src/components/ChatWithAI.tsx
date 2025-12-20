@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChatToolCall } from '../types';
-import { chatService } from '../services/api';
+import { API_BASE_URL, chatService } from '../services/api';
 
 type MessageRole = 'user' | 'assistant' | 'tool';
 
@@ -167,6 +167,7 @@ export default function ChatWithAI() {
             <div>
               <h2 className="text-lg font-bold text-slate-900">Chat với A.I</h2>
               <p className="text-sm text-slate-600">Azure OpenAI (gpt-4o-mini) + tool gọi API tìm kiếm địa điểm.</p>
+              <p className="mt-1 text-xs text-slate-400">API: {API_BASE_URL}</p>
             </div>
             <label className="inline-flex items-center gap-3 rounded-xl bg-white/70 px-4 py-2 text-sm font-semibold text-slate-800 ring-1 ring-black/5">
               <span>Tự chạy API</span>
@@ -306,4 +307,3 @@ export default function ChatWithAI() {
     </div>
   );
 }
-
