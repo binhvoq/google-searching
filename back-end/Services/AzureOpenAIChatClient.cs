@@ -4,6 +4,21 @@ using System.Text.Json;
 
 namespace GoogleSearching.Api.Services;
 
+public class AzureOpenAIRequestException : Exception
+{
+    public AzureOpenAIRequestException(string message, int statusCode, int? retryAfterSeconds, string? bodyPreview, Exception? innerException = null)
+        : base(message, innerException)
+    {
+        StatusCode = statusCode;
+        RetryAfterSeconds = retryAfterSeconds;
+        BodyPreview = bodyPreview;
+    }
+
+    public int StatusCode { get; }
+    public int? RetryAfterSeconds { get; }
+    public string? BodyPreview { get; }
+}
+
 public class AzureOpenAIChatClient
 {
     private readonly HttpClient _httpClient;
@@ -52,12 +67,38 @@ public class AzureOpenAIChatClient
         var json = await response.Content.ReadAsStringAsync(cancellationToken);
         if (!response.IsSuccessStatusCode)
         {
+            var statusCode = (int)response.StatusCode;
+            var retryAfterSeconds = TryGetRetryAfterSeconds(response);
             var bodyPreview = json.Length <= 3000 ? json : $"{json[..3000]}…(truncated)";
-            _logger.LogWarning("Azure OpenAI error {Status}: {Body}", (int)response.StatusCode, bodyPreview);
-            throw new InvalidOperationException($"Azure OpenAI request failed: {(int)response.StatusCode}. Body: {bodyPreview}");
+            _logger.LogWarning("Azure OpenAI error {Status}. retryAfterSec={RetryAfterSec} body={Body}",
+                statusCode, retryAfterSeconds, bodyPreview);
+            throw new AzureOpenAIRequestException(
+                $"Azure OpenAI request failed: {statusCode}.",
+                statusCode,
+                retryAfterSeconds,
+                bodyPreview);
         }
 
         return AzureChatCompletion.Parse(json);
+    }
+
+    private static int? TryGetRetryAfterSeconds(HttpResponseMessage response)
+    {
+        // Azure may return Retry-After, retry-after-ms, or x-ms-retry-after-ms.
+        if (response.Headers.TryGetValues("Retry-After", out var retryAfterValues))
+        {
+            var v = retryAfterValues.FirstOrDefault();
+            if (int.TryParse(v, out var sec) && sec >= 0) return sec;
+        }
+
+        if (response.Headers.TryGetValues("retry-after-ms", out var retryAfterMsValues) ||
+            response.Headers.TryGetValues("x-ms-retry-after-ms", out retryAfterMsValues))
+        {
+            var v = retryAfterMsValues.FirstOrDefault();
+            if (int.TryParse(v, out var ms) && ms >= 0) return (int)Math.Ceiling(ms / 1000.0);
+        }
+
+        return null;
     }
 }
 

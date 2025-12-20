@@ -30,6 +30,7 @@ public class ChatService : IChatService
         }
 
         var session = _sessions.GetOrCreate(request.SessionId);
+        var traceId = System.Diagnostics.Activity.Current?.Id;
         _logger.LogInformation("Chat request. sessionId={SessionId} autoRunApi={AutoRunApi} messageLen={Len}",
             session.SessionId, request.AutoRunApi, request.Message.Trim().Length);
 
@@ -62,6 +63,19 @@ public class ChatService : IChatService
             ["content"] = request.Message.Trim()
         });
 
+        LogPromptStats(
+            stage: "prepare",
+            sessionId: session.SessionId,
+            traceId: traceId,
+            autoRunApi: request.AutoRunApi,
+            systemPromptLen: systemPrompt.Length,
+            memoryLen: memory.Length,
+            totalStoredHistory: session.History.Count,
+            includedHistory: history.Count,
+            messagesCount: messages.Count,
+            approxInputTokens: EstimateTokensFromChars(SumMessageChars(messages)),
+            userPreview: BuildPreview(request.Message));
+
         var tools = BuildTools();
 
         var firstPayload = new Dictionary<string, object?>
@@ -80,16 +94,40 @@ public class ChatService : IChatService
         AzureChatCompletion first;
         try
         {
+            _logger.LogInformation("Azure OpenAI call=start stage=first sessionId={SessionId} traceId={TraceId} tools={Tools}",
+                session.SessionId, traceId ?? "", request.AutoRunApi);
             first = await _openAi.CreateChatCompletionAsync(firstPayload, cancellationToken);
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "Azure OpenAI first completion failed. sessionId={SessionId}", session.SessionId);
-            throw;
+            var assistantText = BuildLocalFallbackReply(request.Message);
+            AppendToHistory(session, request.Message, assistantText);
+
+            return new ChatResponse
+            {
+                SessionId = session.SessionId,
+                AssistantMessage = assistantText,
+                MemorySummary = session.MemorySummary,
+                ToolCalls = new List<ChatToolCall>
+                {
+                    new()
+                    {
+                        Name = "azure_openai",
+                        Status = "error",
+                        Detail = ex is AzureOpenAIRequestException aoaiEx && aoaiEx.StatusCode == 429
+                            ? BuildRateLimitDetail(aoaiEx)
+                            : "Azure OpenAI request failed"
+                    }
+                }
+            };
         }
 
         var toolCalls = new List<ChatToolCall>();
         var latestSearchSummary = (SearchToolResult?)null;
+
+        _logger.LogInformation("Azure OpenAI call=done stage=first sessionId={SessionId} traceId={TraceId} assistantLen={AssistantLen} toolCalls={ToolCalls}",
+            session.SessionId, traceId ?? "", first.AssistantContent?.Length ?? 0, first.ToolCalls.Count);
 
         // No tool calls -> return assistant message as-is
         if (first.ToolCalls.Count == 0 || !request.AutoRunApi)
@@ -110,6 +148,9 @@ public class ChatService : IChatService
                 ToolCalls = toolCalls
             };
         }
+
+        _logger.LogInformation("Tool flow: will execute {Count} tool call(s). sessionId={SessionId} traceId={TraceId} tools={Tools}",
+            first.ToolCalls.Count, session.SessionId, traceId ?? "", string.Join(',', first.ToolCalls.Select(t => t.Name)));
 
         // Add assistant tool call message
         messages.Add(new Dictionary<string, object?>
@@ -203,6 +244,19 @@ public class ChatService : IChatService
         string assistantFinal;
         try
         {
+            LogPromptStats(
+                stage: "second_call",
+                sessionId: session.SessionId,
+                traceId: traceId,
+                autoRunApi: request.AutoRunApi,
+                systemPromptLen: systemPrompt.Length,
+                memoryLen: memory.Length,
+                totalStoredHistory: session.History.Count,
+                includedHistory: history.Count,
+                messagesCount: messages.Count,
+                approxInputTokens: EstimateTokensFromChars(SumMessageChars(messages)),
+                userPreview: BuildPreview(request.Message));
+            _logger.LogInformation("Azure OpenAI call=start stage=second sessionId={SessionId} traceId={TraceId}", session.SessionId, traceId ?? "");
             var second = await _openAi.CreateChatCompletionAsync(secondPayload, cancellationToken);
             assistantFinal = second.AssistantContent?.Trim() ?? string.Empty;
         }
@@ -214,6 +268,8 @@ public class ChatService : IChatService
 
         if (string.IsNullOrWhiteSpace(assistantFinal))
         {
+            _logger.LogWarning("Assistant final empty -> using fallback. sessionId={SessionId} traceId={TraceId} hasSearchSummary={HasSearchSummary}",
+                session.SessionId, traceId ?? "", latestSearchSummary != null);
             assistantFinal = latestSearchSummary != null
                 ? BuildFallbackAnswerFromSearch(latestSearchSummary)
                 : "Mình đã gọi API nhưng chưa nhận được phản hồi hoàn chỉnh. Bạn thử lại giúp mình nhé.";
@@ -240,6 +296,111 @@ public class ChatService : IChatService
         {
             session.History.RemoveAt(0);
         }
+    }
+
+    private static string BuildLocalFallbackReply(string userMessage)
+    {
+        var text = (userMessage ?? string.Empty).Trim();
+
+        if (LooksLikeGreetingOrSmalltalk(text))
+        {
+            return "Chào bạn! Mình có thể giúp bạn tìm địa điểm theo khu vực và từ khoá.\n\nVí dụ: \"Tìm cafe làm việc ở Quận 3\" hoặc \"Tìm bệnh viện gần Quận 1\".";
+        }
+
+        return "Hiện mình đang gặp lỗi khi kết nối dịch vụ A.I. Bạn thử lại sau ít phút giúp mình nhé.";
+    }
+
+    private static string BuildRateLimitDetail(AzureOpenAIRequestException ex)
+    {
+        var retryAfter = ex.RetryAfterSeconds;
+        return retryAfter.HasValue && retryAfter.Value > 0
+            ? $"Rate limited. retryAfterSec={retryAfter.Value}"
+            : "Rate limited.";
+    }
+
+    private static bool LooksLikeGreetingOrSmalltalk(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text)) return true;
+
+        var t = text.Trim().ToLowerInvariant();
+        if (t.Length <= 32)
+        {
+            if (t is "hi" or "hello" or "hey" or "alo" or "chao" or "chào" or "xin chao" or "xin chào")
+            {
+                return true;
+            }
+        }
+
+        var smalltalkMarkers = new[]
+        {
+            "chao", "chào", "xin chao", "xin chào",
+            "toi ten", "tôi tên", "minh ten", "mình tên",
+            "ban ten", "bạn tên",
+            "ban khoe", "bạn khỏe", "khoe khong", "khỏe không",
+            "cam on", "cảm ơn",
+            "co gi vay", "có gì vậy", "gi vay", "gì vậy"
+        };
+
+        return smalltalkMarkers.Any(m => t.Contains(m, StringComparison.Ordinal));
+    }
+
+    private void LogPromptStats(
+        string stage,
+        string sessionId,
+        string? traceId,
+        bool autoRunApi,
+        int systemPromptLen,
+        int memoryLen,
+        int totalStoredHistory,
+        int includedHistory,
+        int messagesCount,
+        int approxInputTokens,
+        string userPreview)
+    {
+        _logger.LogInformation(
+            "Prompt stats. stage={Stage} sessionId={SessionId} traceId={TraceId} autoRunApi={AutoRunApi} systemLen={SystemLen} memoryLen={MemoryLen} storedHistory={StoredHistory} includedHistory={IncludedHistory} messages={Messages} approxInputTokens={ApproxTokens} userPreview=\"{UserPreview}\"",
+            stage, sessionId, traceId ?? "", autoRunApi, systemPromptLen, memoryLen, totalStoredHistory, includedHistory, messagesCount, approxInputTokens, userPreview);
+    }
+
+    private static int SumMessageChars(IEnumerable<Dictionary<string, object?>> messages)
+    {
+        var total = 0;
+        foreach (var msg in messages)
+        {
+            if (msg.TryGetValue("content", out var contentObj) && contentObj is string content && !string.IsNullOrEmpty(content))
+            {
+                total += content.Length;
+            }
+
+            // Tool call message includes arguments which can be large.
+            if (msg.TryGetValue("tool_calls", out var toolCallsObj) && toolCallsObj is IEnumerable<object> toolCalls)
+            {
+                foreach (var tc in toolCalls)
+                {
+                    if (tc is Dictionary<string, object?> tcDict &&
+                        tcDict.TryGetValue("function", out var fnObj) && fnObj is Dictionary<string, object?> fnDict &&
+                        fnDict.TryGetValue("arguments", out var argsObj) && argsObj is string args && !string.IsNullOrEmpty(args))
+                    {
+                        total += args.Length;
+                    }
+                }
+            }
+        }
+
+        return total;
+    }
+
+    private static int EstimateTokensFromChars(int charCount)
+    {
+        if (charCount <= 0) return 0;
+        // Rough estimate: GPT token ~= 3-4 chars for Vietnamese/Latin text.
+        return (int)Math.Ceiling(charCount / 3.6);
+    }
+
+    private static string BuildPreview(string text)
+    {
+        var t = (text ?? string.Empty).Replace('\n', ' ').Replace('\r', ' ').Trim();
+        return t.Length <= 90 ? t : $"{t[..90]}...";
     }
 
     private static object BuildTools()
