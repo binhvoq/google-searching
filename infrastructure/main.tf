@@ -127,27 +127,16 @@ resource "azurerm_service_plan" "plan" {
 
 # Azure Key Vault để lưu trữ secrets
 resource "azurerm_key_vault" "kv" {
-  name                = "kv-gs-${random_string.kv_unique.result}"
-  location            = azurerm_resource_group.rg.location
-  resource_group_name = azurerm_resource_group.rg.name
-  tenant_id           = data.azurerm_client_config.current.tenant_id
-  sku_name            = "standard"
-
-  # Cho phép truy cập từ App Service qua Managed Identity
-  access_policy {
-    tenant_id = data.azurerm_client_config.current.tenant_id
-    object_id = data.azurerm_client_config.current.object_id
-
-    secret_permissions = [
-      "Get",
-      "List",
-      "Set",
-      "Delete",
-      "Recover",
-      "Backup",
-      "Restore"
-    ]
-  }
+  name                        = "kv-gs-${random_string.kv_unique.result}"
+  location                    = azurerm_resource_group.rg.location
+  resource_group_name         = azurerm_resource_group.rg.name
+  tenant_id                   = data.azurerm_client_config.current.tenant_id
+  sku_name                    = "standard"
+  
+  # QUAN TRỌNG: Phải bật RBAC để dùng được Role Assignment
+  # Khi RBAC được bật, access_policy sẽ không còn hiệu lực
+  # Quyền truy cập được quản lý qua azurerm_role_assignment.kv_secrets_user
+  enable_rbac_authorization   = true
 
   # Network ACLs - cho phép truy cập từ mọi nơi (có thể hạn chế sau)
   network_acls {
@@ -330,10 +319,18 @@ resource "azurerm_linux_web_app" "api" {
   ]
 }
 
+# Phân quyền cho Terraform user (để có thể tạo/sửa secrets)
+resource "azurerm_role_assignment" "kv_terraform_admin" {
+  scope                = azurerm_key_vault.kv.id
+  role_definition_name = "Key Vault Secrets Officer"  # Quyền cao hơn để tạo/sửa secrets
+  principal_id         = data.azurerm_client_config.current.object_id
+
+  depends_on = [
+    azurerm_key_vault.kv
+  ]
+}
+
 # Phân quyền cho App Service (Managed Identity) truy cập Key Vault
-# LƯU Ý: Chạy terraform apply 2 LẦN:
-#   Lần 1: Tạo identity cho App Service (role assignment này sẽ bị skip)
-#   Lần 2: Tạo role assignment này sau khi identity đã có
 resource "azurerm_role_assignment" "kv_secrets_user" {
   scope                = azurerm_key_vault.kv.id
   role_definition_name = "Key Vault Secrets User"
