@@ -14,14 +14,18 @@ front-end/node_modules/
 # Build outputs
 front-end/dist/
 front-end/build/
-back-end/bin/
-back-end/obj/
-back-end/publish/
+**/bin/
+**/obj/
+**/publish/
 
 # Environment variables
 .env
 .env.local
 .env.*.local
+
+# App settings with secrets (local development only)
+back-end/appsettings.Development.json
+**/appsettings.Development.json
 
 # IDE
 .vscode/
