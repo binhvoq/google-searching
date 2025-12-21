@@ -5,13 +5,13 @@ namespace GoogleSearching.Api.Services;
 
 public class ChatService : IChatService
 {
-    private readonly OpenAIService _openAi;
+    private readonly AzureOpenAIChatClient _openAi;
     private readonly ISearchService _searchService;
     private readonly ChatSessionStore _sessions;
     private readonly ILogger<ChatService> _logger;
 
     public ChatService(
-        OpenAIService openAi,
+        AzureOpenAIChatClient openAi,
         ISearchService searchService,
         ChatSessionStore sessions,
         ILogger<ChatService> logger)

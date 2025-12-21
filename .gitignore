@@ -18,6 +18,10 @@ front-end/build/
 **/obj/
 **/publish/
 
+# Terraform plan output (should not be committed)
+**/tfplan
+tfplan
+
 # Environment variables
 .env
 .env.local
@@ -26,7 +30,6 @@ front-end/build/
 # App settings with secrets (local development only)
 back-end/appsettings.Development.json
 **/appsettings.Development.json
-
 # IDE
 .vscode/
 .idea/

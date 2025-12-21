@@ -18,7 +18,7 @@ Web API .NET 8 để:
 - `AzureOpenAI__Endpoint` (vd: `https://<resource>.cognitiveservices.azure.com/`)
 - `AzureOpenAI__ApiKey`
 - `AzureOpenAI__DeploymentName` (vd: `gpt-4o-mini`)
-- `AzureOpenAI__ApiVersion` (vd: `2024-02-15-preview`)
+- `AzureOpenAI__ApiVersion` (vd: `2024-08-01-preview`)
 
 Bạn cũng có thể cấu hình trong `back-end/appsettings.json` (không nên commit secrets).
 
