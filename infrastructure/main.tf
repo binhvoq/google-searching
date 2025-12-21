@@ -127,7 +127,7 @@ resource "azurerm_service_plan" "plan" {
 
 # Azure Key Vault để lưu trữ secrets
 resource "azurerm_key_vault" "kv" {
-  name                = "kv-googlesearching-${random_string.kv_unique.result}"
+  name                = "kv-gs-${random_string.kv_unique.result}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   tenant_id           = data.azurerm_client_config.current.tenant_id
@@ -331,9 +331,12 @@ resource "azurerm_linux_web_app" "api" {
 }
 
 # Phân quyền cho App Service (Managed Identity) truy cập Key Vault
+# LƯU Ý: Chạy terraform apply 2 LẦN:
+#   Lần 1: Tạo identity cho App Service (role assignment này sẽ bị skip)
+#   Lần 2: Tạo role assignment này sau khi identity đã có
 resource "azurerm_role_assignment" "kv_secrets_user" {
   scope                = azurerm_key_vault.kv.id
-  role_definition_name  = "Key Vault Secrets User"
+  role_definition_name = "Key Vault Secrets User"
   principal_id         = azurerm_linux_web_app.api.identity[0].principal_id
 
   depends_on = [
