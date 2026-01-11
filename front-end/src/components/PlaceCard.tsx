@@ -3,20 +3,22 @@ import type { PlaceResponse } from '../types';
 interface PlaceCardProps {
   place: PlaceResponse;
   index: number;
+  onTagClick?: (tag: string) => void;
+  activeTag?: string | null;
 }
 
-function formatTypes(types: string[]): string {
-  return types
-    .slice(0, 3)
-    .map((type) => type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase()))
-    .join(', ');
+function formatTypeLabel(type: string): string {
+  return type.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
 function getGoogleMapsUrl(placeId: string): string {
   return `https://www.google.com/maps/place/?q=place_id:${placeId}`;
 }
 
-export default function PlaceCard({ place, index }: PlaceCardProps) {
+export default function PlaceCard({ place, index, onTagClick, activeTag }: PlaceCardProps) {
+  // Hiển thị tối đa 6 type
+  const displayTypes = (place.types || []).slice(0, 6);
+
   return (
     <div className="group relative overflow-hidden rounded-2xl bg-white/70 backdrop-blur-md shadow-lg ring-1 ring-black/5 transition hover:-translate-y-0.5 hover:shadow-xl">
       <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-primary-500 via-indigo-500 to-fuchsia-500 opacity-70" />
@@ -64,7 +66,7 @@ export default function PlaceCard({ place, index }: PlaceCardProps) {
             <p className="text-slate-700 text-sm leading-6 flex-1">{place.address}</p>
           </div>
 
-          {place.types.length > 0 && (
+          {displayTypes.length > 0 && (
             <div className="flex items-start gap-2">
               <svg className="w-5 h-5 text-slate-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
@@ -74,7 +76,32 @@ export default function PlaceCard({ place, index }: PlaceCardProps) {
                   d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"
                 />
               </svg>
-              <p className="text-slate-600 text-sm">{formatTypes(place.types)}</p>
+              <div className="flex flex-wrap gap-2">
+                {displayTypes.map((type) => {
+                  const label = formatTypeLabel(type);
+                  const isActive = activeTag === type;
+                  
+                  const baseClass =
+                    'rounded-full border px-3 py-1 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-primary-200';
+                  
+                  const stateClass = isActive
+                    ? 'bg-slate-900 text-white border-slate-900'
+                    : 'bg-primary-50 text-primary-700 border-primary-200 hover:bg-primary-100 cursor-pointer';
+
+                  return (
+                    <button
+                      key={type}
+                      type="button"
+                      onClick={() => onTagClick?.(type)}
+                      aria-pressed={isActive}
+                      className={`${baseClass} ${stateClass}`}
+                      title="Click để tìm các địa điểm cùng loại"
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
           )}
         </div>

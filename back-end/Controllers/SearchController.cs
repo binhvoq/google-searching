@@ -47,7 +47,9 @@ public class SearchController : ControllerBase
     /// <param name="area">Vùng tìm kiếm (ví dụ: "Đà Lạt", "Quận 8, HCM")</param>
     /// <param name="keyword">Từ khoá tìm kiếm (ví dụ: "khách sạn", "cafe làm việc")</param>
     [HttpGet]
-    public async Task<ActionResult<SearchResponse>> SearchPlacesGet([FromQuery] string area, [FromQuery] string? keyword = null)
+    public async Task<ActionResult<SearchResponse>> SearchPlacesGet(
+        [FromQuery] string area,
+        [FromQuery] string? keyword = null)
     {
         if (string.IsNullOrWhiteSpace(area))
         {

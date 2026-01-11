@@ -1,12 +1,27 @@
 import type { SearchResponse } from '../types';
 import PlaceCard from './PlaceCard';
 
+function formatTagLabel(tag: string): string {
+  return tag.replace(/_/g, ' ').replace(/\b\w/g, (l) => l.toUpperCase());
+}
+
 interface PlaceListProps {
   searchResult: SearchResponse | null;
   isLoading: boolean;
+  activeTag?: string | null;
+  baseKeyword?: string;
+  onTagClick?: (tag: string) => void;
+  onClearTag?: () => void;
 }
 
-export default function PlaceList({ searchResult, isLoading }: PlaceListProps) {
+export default function PlaceList({
+  searchResult,
+  isLoading,
+  activeTag,
+  baseKeyword,
+  onTagClick,
+  onClearTag,
+}: PlaceListProps) {
   if (isLoading) {
     return (
       <div className="flex items-center justify-center py-14">
@@ -70,6 +85,29 @@ export default function PlaceList({ searchResult, isLoading }: PlaceListProps) {
 
   return (
     <div className="space-y-6">
+      {activeTag && (
+        <div className="rounded-2xl border border-primary-200 bg-primary-50/80 p-4 shadow-sm">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-primary-800">Dang loc theo tag</p>
+              <div className="mt-2 inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-sm font-semibold text-primary-700 ring-1 ring-primary-200">
+                <span>#{formatTagLabel(activeTag)}</span>
+              </div>
+              {baseKeyword && (
+                <p className="mt-1 text-xs text-primary-700/80">Tu khoa goc: "{baseKeyword}"</p>
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={onClearTag}
+              className="rounded-xl border border-primary-200 bg-white px-4 py-2 text-sm font-semibold text-primary-700 transition hover:border-primary-300 hover:bg-primary-50"
+            >
+              Quay lai tim kiem goc
+            </button>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl bg-white/70 backdrop-blur-md shadow-lg ring-1 ring-black/5 p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
@@ -84,6 +122,7 @@ export default function PlaceList({ searchResult, isLoading }: PlaceListProps) {
               )}{' '}
               tại <span className="font-semibold">{searchResult.area}</span>
             </p>
+            <p className="text-xs text-slate-500 mt-2">Nhan vao tag de tim kiem tiep theo nhom.</p>
           </div>
 
           {searchResult.centerLocation && (
@@ -99,7 +138,13 @@ export default function PlaceList({ searchResult, isLoading }: PlaceListProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {searchResult.places.map((place, index) => (
-          <PlaceCard key={place.placeId} place={place} index={index + 1} />
+          <PlaceCard
+            key={place.placeId}
+            place={place}
+            index={index + 1}
+            onTagClick={onTagClick}
+            activeTag={activeTag}
+          />
         ))}
       </div>
     </div>

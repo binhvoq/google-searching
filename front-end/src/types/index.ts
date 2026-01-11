@@ -12,6 +12,7 @@ export interface PlaceResponse {
   address: string;
   vicinity: string;
   types: string[];
+  primaryType?: string;
   location: LocationResponse | null;
 }
 

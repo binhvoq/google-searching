@@ -1,6 +1,6 @@
+using System.Net.Http.Json;
 using System.Text.Json;
 using GoogleSearching.Api.Models;
-using Microsoft.Extensions.Options;
 
 namespace GoogleSearching.Api.Services;
 
@@ -9,6 +9,12 @@ public class GoogleMapsService : IGoogleMapsService
     private readonly HttpClient _httpClient;
     private readonly IConfiguration _configuration;
     private readonly ILogger<GoogleMapsService> _logger;
+
+    private static readonly JsonSerializerOptions JsonOptions = new()
+    {
+        PropertyNameCaseInsensitive = true,
+        PropertyNamingPolicy = JsonNamingPolicy.CamelCase
+    };
 
     public GoogleMapsService(
         HttpClient httpClient,
@@ -22,11 +28,32 @@ public class GoogleMapsService : IGoogleMapsService
 
     private string ApiKey => _configuration["GoogleMapsApi:ApiKey"] ?? string.Empty;
     private string GeocodingUrl => _configuration["GoogleMapsApi:GeocodingBaseUrl"] ?? string.Empty;
-    private string PlacesUrl => _configuration["GoogleMapsApi:PlacesBaseUrl"] ?? string.Empty;
+
+    // Places API (New) endpoints (REST v1)
+    private string PlacesSearchNearbyUrl =>
+        _configuration["GoogleMapsApi:PlacesSearchNearbyUrl"] ?? "https://places.googleapis.com/v1/places:searchNearby";
+
+    private string PlacesSearchTextUrl =>
+        _configuration["GoogleMapsApi:PlacesSearchTextUrl"] ?? "https://places.googleapis.com/v1/places:searchText";
+
+    // Field Mask cho Text Search (có nextPageToken)
+    private const string TextSearchFieldMask =
+        "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.types,places.primaryType,places.location,nextPageToken";
 
     public async Task<LocationResponse?> GetLocationAndRadiusAsync(string area)
     {
-        var fullAddress = $"{area}, Việt Nam";
+        // Kiểm tra xem area đã có thông tin quốc gia chưa
+        var areaLower = area.ToLower();
+        var hasCountry = areaLower.Contains("việt nam") || 
+                         areaLower.Contains("vietnam") || 
+                         areaLower.Contains("france") || 
+                         areaLower.Contains("pháp") ||
+                         areaLower.Contains("usa") ||
+                         areaLower.Contains("mỹ") ||
+                         areaLower.Contains("japan") ||
+                         areaLower.Contains("nhật");
+
+        var fullAddress = hasCountry ? area : $"{area}, Việt Nam";
         var url = $"{GeocodingUrl}?address={Uri.EscapeDataString(fullAddress)}&key={ApiKey}&language=vi";
 
         try
@@ -35,10 +62,7 @@ public class GoogleMapsService : IGoogleMapsService
             response.EnsureSuccessStatusCode();
 
             var json = await response.Content.ReadAsStringAsync();
-            var data = JsonSerializer.Deserialize<GeocodingResponse>(json, new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true
-            });
+            var data = JsonSerializer.Deserialize<GeocodingResponse>(json, JsonOptions);
 
             if (data == null || data.Status != "OK" || data.Results.Count == 0)
             {
@@ -75,149 +99,146 @@ public class GoogleMapsService : IGoogleMapsService
         }
     }
 
-    public async Task<List<PlaceResult>> SearchPlacesAsync(string area, string? keyword, LocationResponse location)
+    public async Task<List<PlaceResult>> SearchPlacesAsync(
+        string area,
+        string? keyword,
+        LocationResponse location)
+    {
+        string effectiveKeyword = keyword ?? string.Empty;
+        
+        _logger.LogInformation("Final Strategy: Area='{Area}', Keyword='{Key}'", area, effectiveKeyword);
+
+        return await SearchTextAsync(area, effectiveKeyword, location);
+    }
+
+    private async Task<List<PlaceResult>> SearchTextAsync(
+        string area,
+        string keyword,
+        LocationResponse location)
     {
         var allResults = new List<PlaceResult>();
         var seenPlaceIds = new HashSet<string>();
         string? nextPageToken = null;
-        int pageNum = 1;
+
+        // Text Search (New): locationRestriction chỉ hỗ trợ viewport, circle chỉ dùng được qua locationBias
+        var textQuery = $"{keyword} {area}".Trim();
+
+        var regionCode = area.ToLower().Contains("france") || area.ToLower().Contains("pháp") ? "FR" : "VN";
 
         while (true)
         {
-            var url = $"{PlacesUrl}?location={location.Latitude},{location.Longitude}&radius={(int)location.Radius}&key={ApiKey}&language=vi";
-
-            if (!string.IsNullOrEmpty(keyword))
+            var body = new
             {
-                url += $"&keyword={Uri.EscapeDataString(keyword)}";
-            }
-
-            if (nextPageToken != null)
-            {
-                url += $"&pagetoken={Uri.EscapeDataString(nextPageToken)}";
-                await Task.Delay(2000); // Đợi 2 giây trước khi query next page
-            }
-
-            try
-            {
-                var response = await _httpClient.GetAsync(url);
-                response.EnsureSuccessStatusCode();
-
-                var json = await response.Content.ReadAsStringAsync();
-                var data = JsonSerializer.Deserialize<PlacesResponse>(json, new JsonSerializerOptions
+                textQuery,
+                maxResultCount = 20,
+                languageCode = "vi",
+                regionCode = regionCode,
+                locationBias = new
                 {
-                    PropertyNameCaseInsensitive = true
-                });
-
-                if (data == null || data.Status != "OK")
-                {
-                    if (data?.Status != "ZERO_RESULTS")
+                    circle = new
                     {
-                        _logger.LogWarning("Places search failed: {Status}", data?.Status);
-                    }
-                    break;
-                }
-
-                foreach (var place in data.Results)
-                {
-                    if (!string.IsNullOrEmpty(place.PlaceId) && !seenPlaceIds.Contains(place.PlaceId))
-                    {
-                        seenPlaceIds.Add(place.PlaceId);
-                        
-                        // Lọc theo vùng
-                        if (IsPlaceInArea(place, area, location))
+                        center = new
                         {
-                            allResults.Add(place);
-                        }
+                            latitude = location.Latitude,
+                            longitude = location.Longitude
+                        },
+                        radius = location.Radius
                     }
-                }
+                },
+                pageToken = nextPageToken
+            };
 
-                nextPageToken = data.NextPageToken;
-                if (string.IsNullOrEmpty(nextPageToken))
-                {
-                    break;
-                }
-
-                pageNum++;
-            }
-            catch (Exception ex)
+            var data = await SendPlacesRequestAsync(PlacesSearchTextUrl, body, TextSearchFieldMask);
+            
+            if (data == null || data.Places.Count == 0)
             {
-                _logger.LogError(ex, "Error searching places");
                 break;
             }
+
+            foreach (var place in data.Places)
+            {
+                var mapped = MapV1Place(place);
+                if (string.IsNullOrWhiteSpace(mapped.PlaceId) || !seenPlaceIds.Add(mapped.PlaceId))
+                {
+                    continue;
+                }
+
+                allResults.Add(mapped);
+            }
+
+            nextPageToken = data.NextPageToken;
+            if (string.IsNullOrWhiteSpace(nextPageToken))
+            {
+                break;
+            }
+
+            await Task.Delay(2000);
         }
 
         return allResults;
     }
 
-    private double CalculateDistance(double lat1, double lon1, double lat2, double lon2)
+    private async Task<PlacesV1SearchResponse?> SendPlacesRequestAsync(string url, object body, string fieldMask)
     {
-        const double R = 6371000; // Bán kính Trái Đất (mét)
-        
-        var phi1 = lat1 * Math.PI / 180;
-        var phi2 = lat2 * Math.PI / 180;
-        var deltaPhi = (lat2 - lat1) * Math.PI / 180;
-        var deltaLambda = (lon2 - lon1) * Math.PI / 180;
-
-        var a = Math.Sin(deltaPhi / 2) * Math.Sin(deltaPhi / 2) +
-                Math.Cos(phi1) * Math.Cos(phi2) *
-                Math.Sin(deltaLambda / 2) * Math.Sin(deltaLambda / 2);
-        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
-
-        return R * c;
-    }
-
-    private bool IsPlaceInArea(PlaceResult place, string areaQuery, LocationResponse centerLocation)
-    {
-        var address = place.Vicinity ?? place.FormattedAddress ?? string.Empty;
-        var addressLower = address.ToLower();
-        var areaNormalized = NormalizeAreaName(areaQuery);
-        var areaKeywords = areaNormalized.Split(' ', StringSplitOptions.RemoveEmptyEntries);
-
-        var addressNormalized = NormalizeAreaName(address);
-        var hasAreaInAddress = areaKeywords
-            .Where(k => k.Length > 2)
-            .Any(keyword => addressNormalized.Contains(keyword));
-
-        var withinDistance = true;
-        if (place.Geometry?.Location != null)
+        if (string.IsNullOrWhiteSpace(ApiKey))
         {
-            var distance = CalculateDistance(
-                centerLocation.Latitude,
-                centerLocation.Longitude,
-                place.Geometry.Location.Lat,
-                place.Geometry.Location.Lng);
-            withinDistance = distance <= centerLocation.Radius;
+            _logger.LogWarning("GoogleMapsApi:ApiKey is empty.");
+            return null;
         }
 
-        return hasAreaInAddress || withinDistance;
-    }
-
-    private string NormalizeAreaName(string area)
-    {
-        var replacements = new Dictionary<string, string>
+        using var request = new HttpRequestMessage(HttpMethod.Post, url)
         {
-            { "á", "a" }, { "à", "a" }, { "ả", "a" }, { "ã", "a" }, { "ạ", "a" },
-            { "ă", "a" }, { "ắ", "a" }, { "ằ", "a" }, { "ẳ", "a" }, { "ẵ", "a" }, { "ặ", "a" },
-            { "â", "a" }, { "ấ", "a" }, { "ầ", "a" }, { "ẩ", "a" }, { "ẫ", "a" }, { "ậ", "a" },
-            { "é", "e" }, { "è", "e" }, { "ẻ", "e" }, { "ẽ", "e" }, { "ẹ", "e" },
-            { "ê", "e" }, { "ế", "e" }, { "ề", "e" }, { "ể", "e" }, { "ễ", "e" }, { "ệ", "e" },
-            { "í", "i" }, { "ì", "i" }, { "ỉ", "i" }, { "ĩ", "i" }, { "ị", "i" },
-            { "ó", "o" }, { "ò", "o" }, { "ỏ", "o" }, { "õ", "o" }, { "ọ", "o" },
-            { "ô", "o" }, { "ố", "o" }, { "ồ", "o" }, { "ổ", "o" }, { "ỗ", "o" }, { "ộ", "o" },
-            { "ơ", "o" }, { "ớ", "o" }, { "ờ", "o" }, { "ở", "o" }, { "ỡ", "o" }, { "ợ", "o" },
-            { "ú", "u" }, { "ù", "u" }, { "ủ", "u" }, { "ũ", "u" }, { "ụ", "u" },
-            { "ư", "u" }, { "ứ", "u" }, { "ừ", "u" }, { "ử", "u" }, { "ữ", "u" }, { "ự", "u" },
-            { "ý", "y" }, { "ỳ", "y" }, { "ỷ", "y" }, { "ỹ", "y" }, { "ỵ", "y" },
-            { "đ", "d" }
+            Content = JsonContent.Create(body, options: JsonOptions)
         };
 
-        var text = area.ToLower();
-        foreach (var (old, newChar) in replacements)
+        request.Headers.TryAddWithoutValidation("X-Goog-Api-Key", ApiKey);
+        request.Headers.TryAddWithoutValidation("X-Goog-FieldMask", fieldMask);
+
+        var response = await _httpClient.SendAsync(request);
+        var json = await response.Content.ReadAsStringAsync();
+
+        if (!response.IsSuccessStatusCode)
         {
-            text = text.Replace(old, newChar);
+            _logger.LogWarning("Places API (New) failed: {StatusCode}. Body: {Body}", (int)response.StatusCode, json);
+            return null;
         }
 
-        return text.Trim();
+        try
+        {
+            return JsonSerializer.Deserialize<PlacesV1SearchResponse>(json, JsonOptions);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to parse Places API (New) response. Body: {Body}", json);
+            return null;
+        }
+    }
+
+    private static PlaceResult MapV1Place(PlacesV1Place place)
+    {
+        var lat = place.Location?.Latitude;
+        var lng = place.Location?.Longitude;
+
+        return new PlaceResult
+        {
+            PlaceId = place.Id ?? string.Empty,
+            Name = place.DisplayName?.Text ?? string.Empty,
+            Rating = place.Rating,
+            UserRatingsTotal = place.UserRatingCount ?? 0,
+            FormattedAddress = place.FormattedAddress,
+            Vicinity = null,
+            Types = place.Types ?? new List<string>(),
+            PrimaryType = place.PrimaryType,
+            Geometry = new Geometry
+            {
+                Location = new Location
+                {
+                    Lat = lat ?? 0,
+                    Lng = lng ?? 0
+                },
+                Viewport = null
+            }
+        };
     }
 }
 

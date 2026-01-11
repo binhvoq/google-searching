@@ -9,6 +9,7 @@ public class PlaceResponse
     public string Address { get; set; } = string.Empty;
     public string Vicinity { get; set; } = string.Empty;
     public List<string> Types { get; set; } = new();
+    public string? PrimaryType { get; set; }
     public LocationResponse? Location { get; set; }
 }
 

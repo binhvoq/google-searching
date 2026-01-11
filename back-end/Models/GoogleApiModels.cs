@@ -89,7 +89,10 @@ public class PlaceResult
     
     [JsonPropertyName("types")]
     public List<string> Types { get; set; } = new();
-    
+
+    [JsonPropertyName("primary_type")]
+    public string? PrimaryType { get; set; }
+
     [JsonPropertyName("geometry")]
     public Geometry Geometry { get; set; } = new();
 }

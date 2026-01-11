@@ -44,6 +44,7 @@ public class SearchService : ISearchService
                 Address = FormatAddress(p, request.Area),
                 Vicinity = p.Vicinity ?? string.Empty,
                 Types = p.Types ?? new List<string>(),
+                PrimaryType = p.PrimaryType,
                 Location = p.Geometry?.Location != null
                     ? new LocationResponse
                     {

@@ -4,29 +4,64 @@ import PlaceList from './components/PlaceList';
 import TabBar, { TabKey } from './components/TabBar';
 import ChatWithAI from './components/ChatWithAI';
 import { searchService } from './services/api';
-import type { SearchResponse } from './types';
+import type { SearchRequest, SearchResponse } from './types';
 
 function App() {
   const [activeTab, setActiveTab] = useState<TabKey>('search');
   const [searchResult, setSearchResult] = useState<SearchResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [currentQuery, setCurrentQuery] = useState<SearchRequest | null>(null);
+  const [baseQuery, setBaseQuery] = useState<SearchRequest | null>(null);
+  const [activeTag, setActiveTag] = useState<string | null>(null);
 
-  const handleSearch = async (area: string, keyword?: string) => {
+  const executeSearch = async (request: SearchRequest) => {
     setIsLoading(true);
     setError(null);
     setSearchResult(null);
 
     try {
-      const result = await searchService.searchPlaces({ area, keyword });
+      const result = await searchService.searchPlaces(request);
       setSearchResult(result);
     } catch (err: any) {
       console.error('Search error:', err);
-      const errorMessage = err.response?.data?.error || err.message || 'Đã xảy ra lỗi khi tìm kiếm';
+      const errorMessage = err.response?.data?.error || err.message || 'Da x?y ra l?i khi tm ki?m';
       setError(errorMessage);
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleSearch = async (area: string, keyword?: string) => {
+    const request = { area, keyword };
+    setBaseQuery(request);
+    setCurrentQuery(request);
+    setActiveTag(null);
+    await executeSearch(request);
+  };
+
+  const handleTagSearch = async (tag: string) => {
+    const area = currentQuery?.area || searchResult?.area;
+    if (!area) {
+      return;
+    }
+
+    // Luôn tìm kiếm theo keyword (là tag vừa nhấn)
+    const request = { area, keyword: tag.replace(/_/g, ' ') };
+    setCurrentQuery(request);
+    setActiveTag(tag);
+    await executeSearch(request);
+  };
+
+  const handleClearTag = async () => {
+    if (!baseQuery) {
+      setActiveTag(null);
+      return;
+    }
+
+    setActiveTag(null);
+    setCurrentQuery(baseQuery);
+    await executeSearch(baseQuery);
   };
 
   return (
@@ -77,7 +112,14 @@ function App() {
               </div>
             )}
 
-            <PlaceList searchResult={searchResult} isLoading={isLoading} />
+            <PlaceList
+              searchResult={searchResult}
+              isLoading={isLoading}
+              activeTag={activeTag}
+              baseKeyword={baseQuery?.keyword}
+              onTagClick={handleTagSearch}
+              onClearTag={handleClearTag}
+            />
           </div>
         ) : (
           <ChatWithAI />
