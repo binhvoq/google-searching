@@ -240,5 +240,21 @@ public class GoogleMapsService : IGoogleMapsService
             }
         };
     }
+
+    private static double CalculateDistance(double lat1, double lng1, double lat2, double lng2)
+    {
+        var r = 6371e3; // metres
+        var phi1 = lat1 * Math.PI / 180;
+        var phi2 = lat2 * Math.PI / 180;
+        var deltaPhi = (lat2 - lat1) * Math.PI / 180;
+        var deltaLambda = (lng2 - lng1) * Math.PI / 180;
+
+        var a = Math.Sin(deltaPhi / 2) * Math.Sin(deltaPhi / 2) +
+                Math.Cos(phi1) * Math.Cos(phi2) *
+                Math.Sin(deltaLambda / 2) * Math.Sin(deltaLambda / 2);
+        var c = 2 * Math.Atan2(Math.Sqrt(a), Math.Sqrt(1 - a));
+
+        return r * c;
+    }
 }
 
